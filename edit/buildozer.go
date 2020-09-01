@@ -658,7 +658,7 @@ func cmdFixImportPath(opts *Options, env CmdEnvironment) (*build.File, error) {
 	}
 
 	// only fix importpath on go_library or go_proto_library
-	if as.Name != "go_library" || as.Name != "go_proto_library" {
+	if as.Name != "go_library" && as.Name != "go_proto_library" {
 		return nil, nil
 	}
 
@@ -700,7 +700,6 @@ func getAttrValue(rule *build.Rule, name string) (string, error) {
 	}
 
 	return build.FormatString(attr), nil
-
 }
 
 func setAttrValue(rule *build.Rule, name, val string) error {
@@ -740,12 +739,16 @@ func cmdDeleteKind(opts *Options, env CmdEnvironment) (*build.File, error) {
 
 	var all []build.Expr
 	for _, stmt := range env.File.Stmt {
-		sAsCallExpr, ok := stmt.(*build.CallExpr)
-		if ok {
-			// ignore the rule in the set
-			if _, ok := m[sAsCallExpr.X.(*build.Ident).Name]; ok {
-				continue
-			}
+		var s string
+		if sAsCallExpr, ok := stmt.(*build.CallExpr); ok {
+			s = sAsCallExpr.X.(*build.Ident).Name
+		} else if _, ok := stmt.(*build.LoadStmt); ok {
+			s = "load"
+		}
+
+		// ignore stmt in m
+		if len(s) > 0 && m[s] == true {
+			continue
 		}
 		all = append(all, stmt)
 	}
