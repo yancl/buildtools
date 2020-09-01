@@ -37,6 +37,7 @@ import (
 	apipb "github.com/bazelbuild/buildtools/api_proto"
 	"github.com/bazelbuild/buildtools/build"
 	"github.com/bazelbuild/buildtools/file"
+	"github.com/bazelbuild/buildtools/wspace"
 	"github.com/golang/protobuf/proto"
 )
 
@@ -649,6 +650,89 @@ func cmdDictListAdd(opts *Options, env CmdEnvironment) (*build.File, error) {
 	return env.File, nil
 }
 
+// cmdFixImportPath add an importpath attr as a migration from go_prefix
+func cmdFixImportPath(opts *Options, env CmdEnvironment) (*build.File, error) {
+	as, ok := env.Rule.Call.X.(*build.Ident)
+	if !ok {
+		return nil, fmt.Errorf("Call.X is not Ident")
+	}
+
+	// only fix importpath on go_library or go_proto_library
+	if as.Name != "go_library" || as.Name != "go_proto_library" {
+		return nil, nil
+	}
+
+	const importPathAttr = "importpath"
+	// importpath already exsits
+	if env.Rule.Attr(importPathAttr) != nil {
+		return nil, nil
+	}
+
+	v, err := getAttrValue(env.Rule, "name")
+	if err != nil {
+		return nil, err
+	}
+
+	importPath := genImportPath(env.Args[0], env.File.Path, strings.Trim(v, "\""))
+	return env.File, setAttrValue(env.Rule, importPathAttr, importPath)
+}
+
+func genImportPath(importPathRepo, buildFilePath, ruleName string) string {
+	workspaceDir, _ := wspace.FindWorkspaceRoot("")
+	packagePath := strings.TrimPrefix(buildFilePath, workspaceDir)
+	packagePath = strings.TrimPrefix(packagePath, "/")
+	parts := strings.Split(packagePath, "/")
+
+	var importpathParts []string
+	importpathParts = append(importpathParts, importPathRepo)
+	importpathParts = append(importpathParts, parts[0:len(parts)-1]...)
+	importPath := strings.Join(importpathParts, "/")
+
+	if ruleName != "go_default_library" {
+		importPath += "/" + ruleName
+	}
+	return importPath
+}
+
+func getAttrValue(rule *build.Rule, name string) (string, error) {
+	attr := rule.Attr(name)
+	if attr == nil {
+		return "", fmt.Errorf("rule does not have attribute '%s'", name)
+	}
+
+	return build.FormatString(attr), nil
+
+}
+
+func setAttrValue(rule *build.Rule, name, val string) error {
+	rule.SetAttr(name, &build.StringExpr{Value: val})
+	return nil
+}
+
+func cmdRenameKind(opts *Options, env CmdEnvironment) (*build.File, error) {
+	oldKind := env.Args[0]
+	newKind := env.Args[1]
+	if err := renameKind(env.Rule, oldKind, newKind); err != nil {
+		return nil, err
+	}
+	return env.File, nil
+}
+
+func renameKind(r *build.Rule, oldKind, newKind string) error {
+	as, ok := r.Call.X.(*build.Ident)
+	if !ok {
+		return fmt.Errorf("Call.X is not Ident")
+	}
+
+	// only rename kind of oldKind
+	if as.Name != oldKind {
+		return nil
+	}
+
+	r.Call.X = &build.Ident{Name: newKind}
+	return nil
+}
+
 func copyAttributeBetweenRules(env CmdEnvironment, attrName string, from string) (*build.File, error) {
 	fromRule := FindRuleByName(env.File, from)
 	if fromRule == nil {
@@ -713,6 +797,8 @@ var AllCommands = map[string]CommandInfo{
 	"dict_set":          {cmdDictSet, true, 2, -1, "<attr> <(key:value)(s)>"},
 	"dict_remove":       {cmdDictRemove, true, 2, -1, "<attr> <key(s)>"},
 	"dict_list_add":     {cmdDictListAdd, true, 3, -1, "<attr> <key> <value(s)>"},
+	"fix_importpath":    {cmdFixImportPath, true, 1, 1, "<prefix>"},
+	"rename_kind":       {cmdRenameKind, true, 2, 2, "<old_kind> <new_kind>"},
 }
 
 func expandTargets(f *build.File, rule string) ([]*build.Rule, error) {
