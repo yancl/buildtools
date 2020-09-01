@@ -686,12 +686,11 @@ func genImportPath(importPathRepo, buildFilePath, ruleName string) string {
 	var importpathParts []string
 	importpathParts = append(importpathParts, importPathRepo)
 	importpathParts = append(importpathParts, parts[0:len(parts)-1]...)
-	importPath := strings.Join(importpathParts, "/")
 
 	if ruleName != "go_default_library" {
-		importPath += "/" + ruleName
+		importpathParts = append(importpathParts, ruleName)
 	}
-	return importPath
+	return strings.Join(importpathParts, "/")
 }
 
 func getAttrValue(rule *build.Rule, name string) (string, error) {
