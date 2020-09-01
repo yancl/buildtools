@@ -732,6 +732,26 @@ func renameKind(r *build.Rule, oldKind, newKind string) error {
 	return nil
 }
 
+func cmdDeleteKind(opts *Options, env CmdEnvironment) (*build.File, error) {
+	m := make(map[string]bool)
+	for _, arg := range env.Args {
+		m[arg] = true
+	}
+
+	var all []build.Expr
+	for _, stmt := range env.File.Stmt {
+		sAsCallExpr, ok := stmt.(*build.CallExpr)
+		if ok {
+			// ignore the rule in the set
+			if _, ok := m[sAsCallExpr.X.(*build.Ident).Name]; ok {
+				continue
+			}
+		}
+		all = append(all, stmt)
+	}
+	return &build.File{Path: env.File.Path, Comments: env.File.Comments, Stmt: all, Type: build.TypeBuild}, nil
+}
+
 func copyAttributeBetweenRules(env CmdEnvironment, attrName string, from string) (*build.File, error) {
 	fromRule := FindRuleByName(env.File, from)
 	if fromRule == nil {
@@ -798,6 +818,7 @@ var AllCommands = map[string]CommandInfo{
 	"dict_list_add":     {cmdDictListAdd, true, 3, -1, "<attr> <key> <value(s)>"},
 	"fix_importpath":    {cmdFixImportPath, true, 1, 1, "<prefix>"},
 	"rename_kind":       {cmdRenameKind, true, 2, 2, "<old_kind> <new_kind>"},
+	"delete_kind":       {cmdDeleteKind, true, 1, -1, "<value(s)>"},
 }
 
 func expandTargets(f *build.File, rule string) ([]*build.Rule, error) {
