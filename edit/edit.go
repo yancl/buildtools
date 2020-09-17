@@ -901,7 +901,8 @@ func AddValueToListAttribute(r *build.Rule, name string, pkg string, item build.
 // and deletes oldAttr.
 func MoveAllListAttributeValues(rule *build.Rule, oldAttr, newAttr, pkg string, vars *map[string]*build.AssignExpr) error {
 	if rule.Attr(oldAttr) == nil {
-		return fmt.Errorf("no attribute %s found in %s", oldAttr, rule.Name())
+		//return fmt.Errorf("no attribute %s found in %s", oldAttr, rule.Name())
+		return nil
 	}
 	if rule.Attr(newAttr) == nil {
 		RenameAttribute(rule, oldAttr, newAttr)

@@ -456,6 +456,11 @@ func cmdSubstitute(opts *Options, env CmdEnvironment) (*build.File, error) {
 	newTemplate := env.Args[2]
 	for _, key := range attrKeysForPattern(env.Rule, env.Args[0]) {
 		attr := env.Rule.Attr(key)
+		if _, ok := attr.(*build.ListExpr); ok {
+			// in case redo
+			// tmp hack
+			continue
+		}
 		e, ok := attr.(*build.StringExpr)
 		if !ok {
 			ListSubstitute(attr, oldRegexp, newTemplate)
@@ -755,133 +760,6 @@ func cmdDeleteKind(opts *Options, env CmdEnvironment) (*build.File, error) {
 	return &build.File{Path: env.File.Path, Comments: env.File.Comments, Stmt: all, Type: build.TypeBuild}, nil
 }
 
-func cmdFixProtoLibrary(opts *Options, env CmdEnvironment) (*build.File, error) {
-	// check
-	{
-		as, ok := env.Rule.Call.X.(*build.Ident)
-		if !ok {
-			return nil, fmt.Errorf("Call.X is not Ident")
-		}
-
-		// only fix proto_library's deps according to it srcs
-		if as.Name != "proto_library" {
-			return nil, nil
-		}
-	}
-
-	var protos []string
-	{
-		srcs := env.Rule.Attr("srcs")
-		as, ok := srcs.(*build.ListExpr)
-		if !ok {
-			return nil, fmt.Errorf("srcs is not List")
-		}
-
-		for _, expr := range as.List {
-			if as, ok := expr.(*build.StringExpr); ok {
-				protos = append(protos, as.Value)
-			}
-		}
-	}
-
-	var protoFiles []string
-	{
-		protoDir := strings.Split(env.File.Path, "/")
-		protoDir = protoDir[0 : len(protoDir)-1]
-		protoDirStr := strings.Join(protoDir, "/")
-		for _, proto := range protos {
-			protoFiles = append(protoFiles, protoDirStr+"/"+proto)
-		}
-	}
-
-	var deps []string
-	{
-		imports, err := getImportsFromProtoFiles(protoFiles)
-		if err != nil {
-			return nil, err
-		}
-
-		deps = transImportToDeps(imports)
-		deps = removeDupDeps(deps, env)
-	}
-
-	addDepsToProtoLibrary(deps, env)
-
-	return env.File, nil
-}
-
-func removeDupDeps(deps []string, env CmdEnvironment) []string {
-	r := make([]string, 0, len(deps))
-	m := make(map[string]bool)
-	if attr := env.Rule.Attr("deps"); attr != nil {
-		if listExpr, ok := attr.(*build.ListExpr); ok {
-			for _, item := range listExpr.List {
-				if attr, ok := item.(*build.StringExpr); ok {
-					m[attr.Value] = true
-				}
-			}
-		}
-	}
-	for _, dep := range deps {
-		if m[dep] == false {
-			r = append(r, dep)
-		}
-	}
-	return r
-}
-
-func addDepsToProtoLibrary(deps []string, env CmdEnvironment) {
-	attr := "deps"
-	for _, val := range deps {
-		strVal := getStringExpr(val, env.Pkg)
-		AddValueToListAttribute(env.Rule, attr, env.Pkg, strVal, &env.Vars)
-	}
-}
-
-func getImportsFromProtoFiles(files []string) ([]string, error) {
-	var imports []string
-	r := regexp.MustCompile(`(?P<Import>import).*"(?P<proto>.*)".*;`)
-	for _, name := range files {
-		err := func() error {
-			f, err := os.Open(name)
-			if err != nil {
-				return err
-			}
-			defer f.Close()
-
-			scanner := bufio.NewScanner(f)
-			for scanner.Scan() {
-				ss := r.FindStringSubmatch(scanner.Text())
-				if len(ss) == 3 {
-					imports = append(imports, ss[2])
-				}
-			}
-
-			if err := scanner.Err(); err != nil {
-				return err
-			}
-			return nil
-		}()
-		if err != nil {
-			return nil, err
-		}
-	}
-	return imports, nil
-}
-
-func transImportToDeps(imports []string) []string {
-	var deps []string
-	for _, item := range imports {
-		items := strings.Split(item, "/")
-		if len(items) > 2 {
-			p := strings.Join(items[0:len(items)-1], "/")
-			s := strings.ReplaceAll(items[len(items)-1], ".", "_")
-			deps = append(deps, "//"+p+":"+s)
-		}
-	}
-	return deps
-}
-
 func copyAttributeBetweenRules(env CmdEnvironment, attrName string, from string) (*build.File, error) {
 	fromRule := FindRuleByName(env.File, from)
 	if fromRule == nil {
@@ -949,7 +827,6 @@ var AllCommands = map[string]CommandInfo{
 	"fix_importpath":    {cmdFixImportPath, true, 1, 1, "<prefix>"},
 	"rename_kind":       {cmdRenameKind, true, 2, 2, "<old_kind> <new_kind>"},
 	"delete_kind":       {cmdDeleteKind, true, 1, -1, "<value(s)>"},
-	"fix_proto_library": {cmdFixProtoLibrary, true, 0, 0, ""},
 }
 
 func expandTargets(f *build.File, rule string) ([]*build.Rule, error) {
