@@ -663,9 +663,9 @@ func cmdFixImportPath(opts *Options, env CmdEnvironment) (*build.File, error) {
 	}
 
 	// only fix importpath on go_library or go_proto_library
-	if as.Name != "go_library" && as.Name != "go_proto_library" {
-		return nil, nil
-	}
+	// if as.Name != "go_library" && as.Name != "go_proto_library" {
+	//	return nil, nil
+	// }
 
 	const importPathAttr = "importpath"
 	// importpath already exsits
