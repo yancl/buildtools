@@ -657,7 +657,7 @@ func cmdDictListAdd(opts *Options, env CmdEnvironment) (*build.File, error) {
 
 // cmdFixImportPath add an importpath attr as a migration from go_prefix
 func cmdFixImportPath(opts *Options, env CmdEnvironment) (*build.File, error) {
-	as, ok := env.Rule.Call.X.(*build.Ident)
+	_, ok := env.Rule.Call.X.(*build.Ident)
 	if !ok {
 		return nil, fmt.Errorf("Call.X is not Ident")
 	}
